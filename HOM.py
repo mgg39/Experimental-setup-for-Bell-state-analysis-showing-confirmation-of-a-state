@@ -27,6 +27,8 @@ from sequence.kernel.entity import Entity
 from sequence.utils.encoding import *
 from sequence.components.photon import Photon
 
+from typing import Any, Dict, List
+
 from ipywidgets import interact
 from matplotlib import pyplot as plt
 
@@ -294,7 +296,95 @@ class BSMNode(Node):
                 self.photon_counter +=1
                 time += period
 
-    
+
+class PBSNode(Node):
+     def __init__(self, name, timeline, pre_randomized_direction):
+        super().__init__(name, timeline)
+        self.mirror = Mirror(name, timeline)
+        self.mirror.owner = self
+        self.direction = pre_randomized_direction
+        self.light_source = LightSource(name, timeline, frequency=80000000, mean_photon_num = 1)
+        self.light_source.owner = self
+        self.photon_counter = 0
+
+        #Polarization stuff
+     def get(self, photon):
+        super().get(photon)
+        if len(self.photons) != 2:
+            return
+
+        # entangle photons to measure
+        self.photons[0].entangle(self.photons[1])
+
+        # measure in bell basis
+        res = Photon.measure_multiple(self.bell_basis, self.photons)
+
+        # check if we've measured as Phi+ or Phi-; these cannot be measured by the BSM
+        if res == 0 or res == 1:
+            return
+
+        # measured as Psi+
+        # photon detected in corresponding detectors
+        if res == 2:
+            detector_num = random.choice([0, 2])
+            self.detectors[detector_num].get()
+            self.detectors[detector_num + 1].get()
+
+        # measured as Psi-
+        # photon detected in opposite detectors
+        elif res == 3:
+            detector_num = random.choice([0, 2])
+            self.detectors[detector_num].get()
+            self.detectors[3 - detector_num].get()
+
+        else:
+            raise Exception("Invalid result from photon.measure_multiple")
+
+     def trigger(self, detector: Detector, info: Dict[str, Any]):
+        """See base class.
+
+        This method adds additional side effects not present in the base class.
+
+        Side Effects:
+            May send a further message to any attached entities.
+        """
+
+        detector_num = self.detectors.index(detector)
+        time = info["time"]
+
+        # check if matching time
+        if abs(time - self.last_res[0]) < self.resolution:
+            detector_last = self.last_res[1]
+
+            # Psi-
+            if detector_last + detector_num == 3:
+                info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 1, 'time': time}
+                self.notify(info)
+            # Psi+
+            elif abs(detector_last - detector_num) == 1:
+                info = {'entity': 'BSM', 'info_type': 'BSM_res', 'res': 0, 'time': time}
+                self.notify(info)
+
+        self.last_res = [time, detector_num]
+        #----------------------------------------
+
+     def receive_qubit(self, src, qubit):
+        if not qubit.is_null:
+            self.mirror.get()
+
+            y = randrange(100)
+            if not (self.mirror.fidelity * 100 ) < y:
+                #this is just a n,fix
+                process_photon = Process(self.light_source, "emit",[[qubit.quantum_state.state], self.direction])
+
+                time = self.timeline.now()
+                period = int(round(1e12 / self.light_source.frequency))
+                event = Event(time, process_photon)
+                self.owner.timeline.schedule(event)
+                self.photon_counter +=1
+                time += period
+
+#detector nodes
 class ReceiverNode(Node):
     def __init__(self, name, timeline):
         super().__init__(name, timeline)
@@ -311,14 +401,39 @@ if __name__ == "__main__":
     runtime = 10e12 
     tl = Timeline(runtime)
 
+    nodeDA = ReceiverNode("nodeDA", tl)
+    nodeDB = ReceiverNode("nodeDB", tl)
+    nodeDC = ReceiverNode("nodeDC", tl)
+    nodeDD = ReceiverNode("nodeDD", tl)
+
     # nodes and hardware
     node1A = EmittingNode("node1A", tl)
-    node2A = MiddleNode("node2A", tl, "node3")
-    node4A = ReceiverNode("node4A", tl)
     node1B = EmittingNode("node1B", tl)
+
+    node2A = MiddleNode("node2A", tl, "node3")
     node2B = MiddleNode("node2B", tl, "node3")
-    node4B = ReceiverNode("node4B", tl)
-    
+
+    #RAND CHOICE PBS NODE
+    receiver_nodes = (nodeDB, nodeDC)
+    str_receiver_nodes_PBS = ("nodeDB", "nodeDC")
+
+    length_rn = len(receiver_nodes)
+    rand_node_index = random.choice(range(length_rn))
+    str_randnode_pbs = str_receiver_nodes_PBS[rand_node_index]
+    randnode =  receiver_nodes[rand_node_index]
+    node4B = PBSNode("node4B", tl, str_randnode_pbs)
+
+    #PPBS NODE 2
+    receiver_nodes = (nodeDA, nodeDD)
+    str_receiver_nodes_PBS = ("nodeDA", "nodeDD")
+
+    length_rn = len(receiver_nodes)
+    rand_node_index = random.choice(range(length_rn))
+    str_randnode_pbs = str_receiver_nodes_PBS[rand_node_index]
+    randnode =  receiver_nodes[rand_node_index]
+    node4A = PBSNode("node4A", tl, str_randnode_pbs)
+
+    #rand choice BSM Node
     receiver_nodes = (node4A, node4B)
     str_receiver_nodes = ("node4A", "node4B")
 
@@ -330,24 +445,37 @@ if __name__ == "__main__":
     node3 = BSMNode ("node3", tl, str_randnode)
 
 
-
     qc1A = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
     qc2A = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
     qc3 = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
     qc1B = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
     qc2B = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
+    qc4B = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
+    qc4C = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
+    qc4D = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
+    qc4E = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
+
     qc1A.set_ends(node1A, node2A)
     qc2A.set_ends(node2A, node3)
     qc3.set_ends(node3, randnode)
     qc1B.set_ends(node1B, node2B)
     qc2B.set_ends(node2B, node3)
+    qc4B.set_ends(node4B, nodeDB)
+    qc4C.set_ends(node4B, nodeDC)
+    qc4D.set_ends(node4A, nodeDA)
+    qc4E.set_ends(node4A, nodeDD)
 
 
     # counter
     counterA = Counter()
     counterB = Counter()
-    node4A.detector.attach(counterA)
-    node4B.detector.attach(counterB)
+    counterC = Counter()
+    counterD = Counter()
+    nodeDA.detector.attach(counterA)
+    nodeDB.detector.attach(counterB)
+    nodeDC.detector.attach(counterC)
+    nodeDD.detector.attach(counterD)
+
 
 
     # schedule events
@@ -371,3 +499,5 @@ if __name__ == "__main__":
 
     print("percent measured A: {}%".format(100 * counterA.count / NUM_TRIALS))
     print("percent measured B: {}%".format(100 * counterB.count / NUM_TRIALS))
+    print("percent measured C: {}%".format(100 * counterC.count / NUM_TRIALS))
+    print("percent measured D: {}%".format(100 * counterD.count / NUM_TRIALS))
