@@ -143,7 +143,8 @@ def experiment(n_iterations):
 
        class Detector(Entity):
 
-          def __init__(self, name: str, timeline: "Timeline", efficiency=0.9, dark_count=0, count_rate=int(25e6), 
+#LOW COUNT RATES PERMIT US TO DETECT BOTH OF THE QUBITS IN SEPARATE TIME BINS ???
+          def __init__(self, name: str, timeline: "Timeline", efficiency=0.9, dark_count=0, count_rate=int(1), #25e6
                  time_resolution=150):
                 Entity.__init__(self, name, timeline)  # Detector is part of the QSDetector, and does not have its own name
                 self.efficiency = efficiency
@@ -542,6 +543,7 @@ def experiment(n_iterations):
 
                 event1A = Event(i * time_bin, process1A)
 
+
                 event1B = Event(i * time_bin, process1B)
                 #Are they happening at the same time? - no idea - time bins
                 tl.schedule(event1A)
@@ -569,5 +571,3 @@ def experiment(n_iterations):
                 
 
 experiment(n_iterations)
-
-
