@@ -125,7 +125,6 @@ def experiment(n_iterations):
                 self.photon_counter = 0
                 self.time_resolution = time_resolution  # measured in ps
 
-
         
           def init(self):
 
@@ -162,9 +161,9 @@ def experiment(n_iterations):
                 self.photon_counter += 1
                 now = self.timeline.now()
                 time = round(now / self.time_resolution) * self.time_resolution
-                print ("Time" , time)
-                print ("Now" , now)
-                print ("next_detection_time" , self.next_detection_time)
+                #print ("Time" , time)
+                #print ("Now" , now)
+                #print ("next_detection_time" , self.next_detection_time)
 
 
                 if (random.random_sample() < self.efficiency or dark_get) and now > self.next_detection_time:
@@ -187,7 +186,7 @@ def experiment(n_iterations):
           def notify(self, info: Dict[str, Any]):
                 for observer in self._observers:
                     observer.trigger(self, info)
-                    print("I am receiving a qubit")
+                    #print("I am receiving a qubit")
 
        class LightSource(Entity):
 
@@ -256,6 +255,8 @@ def experiment(n_iterations):
                 self.frequency = 0
                 self.basis_list = []
 
+                #print("Hello")
+
           def init(self) -> None:
 
                 pass
@@ -285,6 +286,8 @@ def experiment(n_iterations):
                 if index > len(self.receivers):
                     raise Exception("index is larger than the length of receivers")
                 self.receivers.insert(index, receiver)
+                #print("Beam Splitter 1, index:", index)
+
 
        class Counter():
           def __init__(self):
@@ -330,23 +333,31 @@ def experiment(n_iterations):
 
        class BSMNode(Node):
 
-            def __init__(self, name, timeline, pre_randomized_direction):
+            def __init__(self, name, timeline, str_randnode):
                 super().__init__(name, timeline)
                 self.mirror = Mirror(name, timeline)
                 self.mirror.owner = self
-                self.direction = pre_randomized_direction
+                self.direction_choices = str_randnode
                 self.light_source = LightSource(name, timeline, frequency=80000000, mean_photon_num = 1)
                 self.light_source.owner = self
                 self.photon_counter = 0
             #src = node1
             def receive_qubit(self, src, qubit):
                 #print("BSM received something")
+                
+                #not truly random, but will do for now
+                length_rn = len(self.direction_choices)
+                print(self.direction_choices)
+                rand_node_index = random.choice(range(length_rn))
+                self.direction =  self.direction_choices[rand_node_index]
+
                 if not qubit.is_null:
                     self.mirror.get()
                     y = randrange(100)
                     if  not (self.mirror.fidelity * 100 ) < y:
                         #this is just a n,fix
                         process_photon = Process(self.light_source, "emit",[[qubit.quantum_state.state], self.direction])
+                        print("test", self.direction)
 
                         time = self.timeline.now()
                         period = int(round(1e12 / self.light_source.frequency))
@@ -449,7 +460,7 @@ def experiment(n_iterations):
                 #print("detector received something")
                 if not qubit.is_null:
                     self.detector.get()
-                    print("detector receiving detector" + self.name+ "\n")
+                    #print("detector receiving detector" + self.name+ "\n")
 
        if __name__ == "__main__":
                 runtime = 10e12 
@@ -491,12 +502,7 @@ def experiment(n_iterations):
                 receiver_nodes = (node4A, node4B)
                 str_receiver_nodes = ("node4A", "node4B")
 
-                #not truly random, but will do for now
-                length_rn = len(receiver_nodes)
-                rand_node_index = random.choice(range(length_rn))
-                str_randnode = str_receiver_nodes[rand_node_index]
-                randnode =  receiver_nodes[rand_node_index]
-                node3 = BSMNode ("node3", tl, str_randnode)
+                node3 = BSMNode ("node3", tl, str_receiver_nodes)
 
 
                 qc1A = QuantumChannel("qc", tl, attenuation=0, distance=1e3)
@@ -538,7 +544,7 @@ def experiment(n_iterations):
                 #Process
 
                 process1A = Process(node1A.light_source, "emit", [[((1+0j), 0j)],"node2A"])
-                process1B = Process(node1B.light_source, "emit", [[((0+0j), 0j)],"node2B"])
+                process1B = Process(node1B.light_source, "emit", [[((1+0j), 0j)],"node2B"])
 
 
                 event1A = Event(i * time_bin, process1A)
@@ -563,10 +569,10 @@ def experiment(n_iterations):
                 totalC += counterC.count
                 totalD += counterD.count
 
-    print("total percent measured A: {}%".format(100 * totalA/5 ))
-    print("total percent measured B: {}%".format(100 * totalB/5 ))
-    print("total percent measured C: {}%".format(100 * totalC/5 ))
-    print("total percent measured D: {}%".format(100 * totalD/5 ))
+    print("total percent measured A: {}".format(totalA))
+    print("total percent measured B: {}".format(totalB))
+    print("total percent measured C: {}".format(totalC))
+    print("total percent measured D: {}".format(totalD))
 
                 
 
