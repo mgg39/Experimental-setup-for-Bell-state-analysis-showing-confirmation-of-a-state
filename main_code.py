@@ -1,4 +1,4 @@
-iimport sequence 
+import sequence 
 import math
 
 import numpy
